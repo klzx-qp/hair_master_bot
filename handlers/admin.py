@@ -107,17 +107,38 @@ async def process_admin_slots(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ Ошибка базы данных: {e}")
 
-# ---------- Просмотр расписания ----------
+# ---------- Просмотр расписания (Исправленный) ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
 async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
     global db
-    cur = db.conn.cursor()
-    cur.execute("SELECT date FROM work_days WHERE is_closed = 0 ORDER BY date ASC")
-    days = cur.fetchall()
-    
-    if not days:
-        await call.answer("Расписание пусто.", show_alert=True)
+    if call.from_user.id != ADMIN_ID:
         return
 
-    await call.answer("Функция просмотра списка в разработке, но слоты уже работают!", show_alert=True)
+    try:
+        cur = db.conn.cursor()
+        # Запрос: берем дату, время и имя клиента для всех записей
+        cur.execute("""
+            SELECT b.booking_date, b.booking_time, b.user_name
+            FROM bookings b
+            ORDER BY b.booking_date ASC, b.booking_time ASC
+        """)
+        bookings = cur.fetchall()
+
+        if not bookings:
+            await call.message.edit_text(
+                "📅 <b>Ваше расписание пока пусто.</b>",
+                reply_markup=admin_menu_kb()
+            )
+            return
+
+        text = "<b>📅 Список всех записей:</b>\n\n"
+        for b_date, b_time, name in bookings:
+            text += f"▫️ <code>{b_date}</code> в <code>{b_time}</code> — <b>{name}</b>\n"
+
+        await call.message.edit_text(text, reply_markup=admin_menu_kb())
+        
+    except Exception as e:
+        await call.answer(f"Ошибка при чтении базы: {e}", show_alert=True)
+    
+    await call.answer()
