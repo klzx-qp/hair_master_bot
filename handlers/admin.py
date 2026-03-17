@@ -107,7 +107,7 @@ async def process_admin_slots(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ Ошибка базы данных: {e}")
 
-# ---------- Просмотр расписания (Исправленный) ----------
+# ---------- Просмотр расписания (Исправленный запрос) ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
 async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
@@ -117,11 +117,14 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
 
     try:
         cur = db.conn.cursor()
-        # Запрос: берем дату, время и имя клиента для всех записей
+        # Исправленный запрос: соединяем бронирования со слотами и днями, чтобы достать дату и время
         cur.execute("""
-            SELECT b.booking_date, b.booking_time, b.user_name
+            SELECT wd.date, ts.time, b.user_name
             FROM bookings b
-            ORDER BY b.booking_date ASC, b.booking_time ASC
+            JOIN time_slots ts ON b.slot_id = ts.id
+            JOIN work_days wd ON ts.day_id = wd.id
+            WHERE b.status = 'active'
+            ORDER BY wd.date ASC, ts.time ASC
         """)
         bookings = cur.fetchall()
 
@@ -139,6 +142,7 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text(text, reply_markup=admin_menu_kb())
         
     except Exception as e:
-        await call.answer(f"Ошибка при чтении базы: {e}", show_alert=True)
+        # Если вдруг и тут будет ошибка, бот выведет её текст
+        await call.message.edit_text(f"❌ Ошибка при чтении базы: {e}", reply_markup=admin_menu_kb())
     
     await call.answer()
