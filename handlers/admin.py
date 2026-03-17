@@ -54,14 +54,12 @@ async def on_admin_add_day(call: CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
-# Прием даты текстом
 @router.message(AdminStates.waiting_for_date)
 async def process_admin_date(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     
     date_str = message.text.strip()
-    # Простейшая проверка формата (ГГГГ-ММ-ДД)
     if len(date_str) != 10 or date_str[4] != "-" or date_str[7] != "-":
         await message.answer("❌ Неверный формат! Введите дату точно как: 2026-03-20")
         return
@@ -74,10 +72,9 @@ async def process_admin_date(message: Message, state: FSMContext):
         f"Пример: <code>10:00 12:30 15:00 18:00</code>"
     )
 
-# Прием времени и сохранение в базу
 @router.message(AdminStates.waiting_for_slots)
 async def process_admin_slots(message: Message, state: FSMContext):
-    global db # Обязательно для доступа к базе
+    global db
     if message.from_user.id != ADMIN_ID:
         return
 
@@ -91,12 +88,10 @@ async def process_admin_slots(message: Message, state: FSMContext):
 
     try:
         cur = db.conn.cursor()
-        # 1. Создаем или находим день в базе
         cur.execute("INSERT OR IGNORE INTO work_days (date) VALUES (?)", (date_str,))
         cur.execute("SELECT id FROM work_days WHERE date = ?", (date_str,))
         day_id = cur.fetchone()[0]
 
-        # 2. Добавляем временные слоты
         for s in slots:
             cur.execute(
                 "INSERT INTO time_slots (day_id, time, is_available) VALUES (?, ?, 1)", 
@@ -106,6 +101,23 @@ async def process_admin_slots(message: Message, state: FSMContext):
         db.conn.commit()
         await state.clear()
         await message.answer(
-            f"🎉 Готово! На <b>{date_str}</b> добавлено слотов: {len(slots)}.\n"
-            f"Теперь клиенты увидят их при записи.",
-            reply_markup=admin_menu_kb
+            f"🎉 Готово! На <b>{date_str}</b> добавлено слотов: {len(slots)}.",
+            reply_markup=admin_menu_kb()
+        )
+    except Exception as e:
+        await message.answer(f"❌ Ошибка базы данных: {e}")
+
+# ---------- Просмотр расписания ----------
+
+@router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
+async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
+    global db
+    cur = db.conn.cursor()
+    cur.execute("SELECT date FROM work_days WHERE is_closed = 0 ORDER BY date ASC")
+    days = cur.fetchall()
+    
+    if not days:
+        await call.answer("Расписание пусто.", show_alert=True)
+        return
+
+    await call.answer("Функция просмотра списка в разработке, но слоты уже работают!", show_alert=True)
