@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -6,8 +6,7 @@ from aiogram.filters import Command
 
 from config import ADMIN_ID
 from database import Database
-from keyboards.admin import admin_menu_kb, slots_list_kb, bookings_list_kb
-from keyboards.calendar import build_month_inline_calendar
+from keyboards.admin import admin_menu_kb
 from states.admin_states import AdminStates
 
 router = Router()
@@ -43,7 +42,7 @@ async def on_menu_admin(call: CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
-# ---------- Добавление рабочего дня ----------
+# ---------- Добавление рабочего дня и слотов ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_add_day")
 async def on_admin_add_day(call: CallbackQuery, state: FSMContext):
@@ -60,6 +59,7 @@ async def process_admin_date(message: Message, state: FSMContext):
         return
     
     date_str = message.text.strip()
+    # Простая проверка формата
     if len(date_str) != 10 or date_str[4] != "-" or date_str[7] != "-":
         await message.answer("❌ Неверный формат! Введите дату точно как: 2026-03-20")
         return
@@ -88,10 +88,12 @@ async def process_admin_slots(message: Message, state: FSMContext):
 
     try:
         cur = db.conn.cursor()
+        # Создаем день, если его нет
         cur.execute("INSERT OR IGNORE INTO work_days (date) VALUES (?)", (date_str,))
         cur.execute("SELECT id FROM work_days WHERE date = ?", (date_str,))
         day_id = cur.fetchone()[0]
 
+        # Добавляем каждый слот
         for s in slots:
             cur.execute(
                 "INSERT INTO time_slots (day_id, time, is_available) VALUES (?, ?, 1)", 
@@ -107,7 +109,7 @@ async def process_admin_slots(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ Ошибка базы данных: {e}")
 
-# ---------- Просмотр расписания (Финальная версия под твой Database.py) ----------
+# ---------- Просмотр расписания ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
 async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
@@ -118,7 +120,8 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
     try:
         cur = db.conn.cursor()
         
-        # Используем твою структуру: wd.date, ts.time и b.name (которая в bookings)
+        # Запрос учитывает структуру твоей БД: b.name и b.phone из таблицы bookings
+        # Соединяем с time_slots и work_days для получения времени и даты
         cur.execute("""
             SELECT wd.date, ts.time, b.name, b.phone
             FROM bookings b
@@ -140,13 +143,13 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
         
         current_date = ""
         for row in bookings:
-            # Так как row_factory = sqlite3.Row, обращаемся по именам
+            # Используем row['имя_колонки'], так как в БД включен RowFactory
             b_date = row['date']
             b_time = row['time']
             b_name = row['name']
             b_phone = row['phone']
 
-            # Красивое разделение по датам
+            # Группировка по датам для красоты
             if b_date != current_date:
                 text += f"\n🔵 <b>{b_date}</b>\n"
                 current_date = b_date
