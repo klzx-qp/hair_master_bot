@@ -107,7 +107,7 @@ async def process_admin_slots(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ Ошибка базы данных: {e}")
 
-# ---------- Просмотр расписания (Исправленный запрос) ----------
+# ---------- Просмотр расписания (Финальная версия) ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
 async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
@@ -117,7 +117,9 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
 
     try:
         cur = db.conn.cursor()
-        # Исправленный запрос: соединяем бронирования со слотами и днями, чтобы достать дату и время
+        
+        # Мы пробуем достать имя клиента. Если у тебя в таблице колонки называются по-другому,
+        # этот запрос объединяет таблицы и берет дату из work_days, а время из time_slots.
         cur.execute("""
             SELECT wd.date, ts.time, b.user_name
             FROM bookings b
@@ -137,12 +139,14 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
 
         text = "<b>📅 Список всех записей:</b>\n\n"
         for b_date, b_time, name in bookings:
+            # name — это то, что мы получили из b.user_name
             text += f"▫️ <code>{b_date}</code> в <code>{b_time}</code> — <b>{name}</b>\n"
 
         await call.message.edit_text(text, reply_markup=admin_menu_kb())
         
     except Exception as e:
-        # Если вдруг и тут будет ошибка, бот выведет её текст
-        await call.message.edit_text(f"❌ Ошибка при чтении базы: {e}", reply_markup=admin_menu_kb())
+        # Если снова будет ошибка (например, колонка называется не user_name, а просто name),
+        # бот напишет об этом, и мы поймем, как переименовать поле в коде.
+        await call.message.edit_text(f"❌ Ошибка базы: {e}\nПопробуйте проверить название колонок в таблице bookings.", reply_markup=admin_menu_kb())
     
     await call.answer()
