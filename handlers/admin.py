@@ -22,7 +22,20 @@ def init_admin_handlers(router_: Router, db_: Database):
 
 # ---------- Вход в админ-панель ----------
 
+# Добавляем вход через текстовую команду /admin
+@router.message(F.text == "/admin")
+async def command_admin(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У вас нет прав доступа.")
+        return
 
+    await state.set_state(AdminStates.choosing_action)
+    await message.answer(
+        "<b>Админ-панель</b>\nВыберите действие:",
+        reply_markup=admin_menu_kb(),
+    )
+
+# Оставляем существующий вход через кнопку
 @router.callback_query(F.data == "menu_admin")
 async def on_menu_admin(call: CallbackQuery, state: FSMContext):
     if call.from_user.id != ADMIN_ID:
