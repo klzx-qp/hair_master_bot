@@ -31,9 +31,15 @@ async def main():
     # Восстановление задач напоминаний из БД
     restore_reminders(db)
 
-    # Регистрация хендлеров
-    init_user_booking_handlers(dp, db, bot, CHANNEL_ID)
+    # --- РЕГИСТРАЦИЯ ХЕНДЛЕРОВ (ПОРЯДОК ВАЖЕН!) ---
+    
+    # 1. Сначала админ (чтобы команды /admin и ввод слотов не перехватывались)
     init_admin_handlers(dp, db)
+    
+    # 2. Затем бронирование для пользователей
+    init_user_booking_handlers(dp, db, bot, CHANNEL_ID)
+    
+    # 3. В самом конце — эхо-фильтр и прочие общие хендлеры
     dp.include_router(misc_handlers.router)
 
     print("Бот запущен...")
