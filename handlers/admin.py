@@ -107,7 +107,7 @@ async def process_admin_slots(message: Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ Ошибка базы данных: {e}")
 
-# ---------- Просмотр расписания (Финальная версия) ----------
+# ---------- Просмотр расписания (Финальная версия под твой Database.py) ----------
 
 @router.callback_query(AdminStates.choosing_action, F.data == "admin_view_schedule")
 async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
@@ -118,10 +118,9 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
     try:
         cur = db.conn.cursor()
         
-        # Мы пробуем достать имя клиента. Если у тебя в таблице колонки называются по-другому,
-        # этот запрос объединяет таблицы и берет дату из work_days, а время из time_slots.
+        # Используем твою структуру: wd.date, ts.time и b.name (которая в bookings)
         cur.execute("""
-            SELECT wd.date, ts.time, b.user_name
+            SELECT wd.date, ts.time, b.name, b.phone
             FROM bookings b
             JOIN time_slots ts ON b.slot_id = ts.id
             JOIN work_days wd ON ts.day_id = wd.id
@@ -132,21 +131,31 @@ async def on_admin_view_schedule(call: CallbackQuery, state: FSMContext):
 
         if not bookings:
             await call.message.edit_text(
-                "📅 <b>Ваше расписание пока пусто.</b>",
+                "📅 <b>Список записей пуст.</b>",
                 reply_markup=admin_menu_kb()
             )
             return
 
-        text = "<b>📅 Список всех записей:</b>\n\n"
-        for b_date, b_time, name in bookings:
-            # name — это то, что мы получили из b.user_name
-            text += f"▫️ <code>{b_date}</code> в <code>{b_time}</code> — <b>{name}</b>\n"
+        text = "<b>📅 Все активные записи:</b>\n\n"
+        
+        current_date = ""
+        for row in bookings:
+            # Так как row_factory = sqlite3.Row, обращаемся по именам
+            b_date = row['date']
+            b_time = row['time']
+            b_name = row['name']
+            b_phone = row['phone']
+
+            # Красивое разделение по датам
+            if b_date != current_date:
+                text += f"\n🔵 <b>{b_date}</b>\n"
+                current_date = b_date
+            
+            text += f"  🕘 {b_time} — {b_name} (<code>{b_phone}</code>)\n"
 
         await call.message.edit_text(text, reply_markup=admin_menu_kb())
         
     except Exception as e:
-        # Если снова будет ошибка (например, колонка называется не user_name, а просто name),
-        # бот напишет об этом, и мы поймем, как переименовать поле в коде.
-        await call.message.edit_text(f"❌ Ошибка базы: {e}\nПопробуйте проверить название колонок в таблице bookings.", reply_markup=admin_menu_kb())
+        await call.message.edit_text(f"❌ Ошибка БД: {e}", reply_markup=admin_menu_kb())
     
     await call.answer()
